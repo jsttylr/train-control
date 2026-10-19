@@ -1,4 +1,4 @@
-// Train Control: a loco roster for a DCC layout, served as a web page on your network.
+// Train Control: a loco roster and inventory for a DCC layout, served as a web page on your network.
 // Track control (JMRI / LocoNet) will be added here later.
 package main
 
@@ -29,17 +29,21 @@ func main() {
 		os.Exit(healthcheck(*listen))
 	}
 
-	store, err := OpenStore(*dataDir)
+	locos, err := OpenStore[Loco](*dataDir, "locos.json", locoLess)
 	if err != nil {
 		log.Fatalf("can't open the roster in %s: %v", *dataDir, err)
+	}
+	items, err := OpenStore[Item](*dataDir, "inventory.json", itemLess)
+	if err != nil {
+		log.Fatalf("can't open the inventory in %s: %v", *dataDir, err)
 	}
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
 		log.Fatalf("can't listen on %s: %v (is another copy already running?)", *listen, err)
 	}
-	srv := &http.Server{Handler: routes(store), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: routes(stores{locos, items}), ReadHeaderTimeout: 10 * time.Second}
 	url := pageURL(*listen)
-	log.Printf("Train Control is running at %s (roster in %s)", url, *dataDir)
+	log.Printf("Train Control is running at %s (data in %s)", url, *dataDir)
 	if !*noBrowser {
 		openBrowser(url)
 	}

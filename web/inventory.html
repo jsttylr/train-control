@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<title>Inventory · Train Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<style>
+/* Layout: summary tiles, then a filterable ledger of everything owned, or the purchases grouped by year */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.tile b { display: block; font-family: var(--f-display); font-weight: 800; font-size: 1.8rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile span { font-size: .8rem; color: var(--muted); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 12px; color: var(--muted); font-weight: 600; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--pine); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.toolbar input[type=search] { flex: 1 1 220px; }
+.toolbar .spacer { flex: 1; }
+.ledger { overflow-x: auto; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr { cursor: pointer; }
+tbody tr:hover td, tbody tr:focus-visible td { background: var(--stage); }
+tbody tr:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; }
+tr.group td { background: var(--bg); font-family: var(--f-display); font-weight: 800; font-size: 1.15rem; cursor: default; padding-top: 14px; }
+tr.group:hover td { background: var(--bg); }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mono { font-family: var(--f-mono); font-size: .85rem; }
+.desc { color: var(--muted); font-size: .85rem; }
+.miss { color: var(--muted); font-style: italic; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--stage); border: 1px solid var(--line); white-space: nowrap; }
+.ctl { font-family: var(--f-mono); font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.ctl.dcc, .ctl.dcc-sound { color: var(--pine); } .ctl.analog { color: var(--cran); }
+.st { font-size: .75rem; font-weight: 600; }
+.st.wanted { color: var(--gold); } .st.sold { color: var(--muted); text-decoration: line-through; }
+.subtotal td { font-weight: 600; cursor: default; }
+.feat { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.feat label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: .9rem; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.panel.inv { grid-template-columns: 1fr 1fr; }
+.panel.inv .wide { grid-column: 1 / -1; }
+.note { font-size: .85rem; color: var(--muted); margin: 0; }
+@media (max-width: 720px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .panel.inv, .trio { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav" aria-label="Pages"><a href="./">Roster</a><a href="inventory.html" aria-current="page">Inventory</a></nav>
+  <div class="top">
+    <div>
+      <h1>Inventory</h1>
+      <p>Everything in the collection: what it is, where it came from, what it cost, and what's been done to it.</p>
+    </div>
+  </div>
+  <div class="tiles" aria-live="polite">
+    <div class="tile"><b id="tItems">0</b><span>pieces owned</span></div>
+    <div class="tile"><b id="tSpent">$0</b><span id="tSpentNote">spent on recorded purchases</span></div>
+    <div class="tile"><b id="tYear">$0</b><span id="tYearLabel">spent this year</span></div>
+    <div class="tile"><b id="tWanted">0</b><span>on the wish list</span></div>
+  </div>
+  <span id="conn" class="status">Loading the inventory…</span>
+
+  <form id="panel" class="panel inv" hidden>
+    <h2 id="panelTitle">Add an item</h2>
+    <div class="fields">
+      <label for="iCat">Category<select id="iCat">
+        <option value="loco">Locomotive</option><option value="set">Train set</option><option value="car">Car (rolling stock)</option>
+        <option value="track">Track</option><option value="structure">Structure / scenery</option><option value="electronics">Electronics</option><option value="other">Other</option>
+      </select></label>
+      <div class="pair">
+        <label for="iMake">Maker<input id="iMake" maxlength="40" list="makers" placeholder="Kato"></label>
+        <label for="iPart">Part / set number<input id="iPart" maxlength="40" placeholder="20-860"></label>
+      </div>
+      <label for="iDesc">Description<input id="iDesc" maxlength="120" placeholder="V1 passing siding set"></label>
+      <div class="trio">
+        <label for="iQty">Quantity<input id="iQty" type="number" min="1" max="9999" value="1" inputmode="numeric"></label>
+        <label for="iStatus">Status<select id="iStatus"><option value="owned">Owned</option><option value="wanted">Wish list</option><option value="sold">Sold / gone</option></select></label>
+        <label for="iCond">Condition<select id="iCond"><option value="">Not noted</option><option value="new">New</option><option value="used">Used</option></select></label>
+      </div>
+      <label for="iCtl" id="ctlWrap">Control<select id="iCtl"><option value="">Not noted</option><option value="dcc">DCC</option><option value="dcc-sound">DCC + sound</option><option value="analog">Analog DC</option></select></label>
+    </div>
+    <div class="fields">
+      <div class="trio">
+        <label for="iDate">Acquired<input id="iDate" maxlength="10" placeholder="YYYY-MM-DD"></label>
+        <label for="iCost">Paid ($)<input id="iCost" inputmode="decimal" placeholder="0.00"></label>
+        <label for="iSrc">From<input id="iSrc" maxlength="80" placeholder="Hobby shop, eBay…"></label>
+      </div>
+      <p class="note">Paid is the total for this line, all of the quantity together. The date can be just a year or year and month.</p>
+      <fieldset style="border:0;padding:0;margin:0;display:grid;gap:6px">
+        <legend class="note" style="padding:0;margin-bottom:6px">Features and upgrades</legend>
+        <div class="feat" id="featBoxes"></div>
+        <label for="iFeatX">Other features, separated by commas<input id="iFeatX" maxlength="200" placeholder="Custom paint, Body-mounted couplers"></label>
+      </fieldset>
+      <label for="iNotes">Notes<textarea id="iNotes" rows="2" maxlength="400" placeholder="In a consist with…, needs a decoder…"></textarea></label>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary" id="saveBtn">Save</button>
+      <button type="button" id="cancelBtn">Cancel</button>
+      <span class="spacer"></span>
+      <button type="button" id="delBtn" class="danger" hidden>Delete</button>
+      <span id="formStatus" class="status" role="status"></span>
+    </div>
+  </form>
+  <datalist id="makers"><option value="Kato"><option value="Atlas"><option value="Micro-Trains"><option value="Athearn"><option value="Bachmann"><option value="Broadway Limited"><option value="Rapido"><option value="Digitrax"></datalist>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabAll" aria-selected="true">Everything</button>
+    <button role="tab" id="tabBuy" aria-selected="false">Purchases</button>
+  </div>
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="Search maker, part number, description, features" aria-label="Search">
+    <select id="fCat" aria-label="Category"><option value="">All categories</option><option value="loco">Locomotives</option><option value="set">Train sets</option><option value="car">Cars</option><option value="track">Track</option><option value="structure">Structures</option><option value="electronics">Electronics</option><option value="other">Other</option></select>
+    <select id="fStatus" aria-label="Status"><option value="owned">Owned</option><option value="wanted">Wish list</option><option value="sold">Sold</option><option value="">Everything</option></select>
+    <span class="spacer"></span>
+    <button type="button" class="primary" id="addBtn">Add an item</button>
+  </div>
+  <div class="ledger"><table id="tbl"></table></div>
+  <div id="empty" class="empty" hidden>
+    <p><b>Nothing here yet.</b> Add items one at a time, or import a spreadsheet saved as CSV. The first row needs column names; only <span class="mono">category</span> is required, and the others can be <span class="mono">make, part, description, quantity, status, condition, control, acquired, cost, source, features, notes</span>.</p>
+  </div>
+  <div class="toolbar">
+    <label for="csvFile" class="note" style="display:flex;gap:8px;align-items:center">Import a CSV<input type="file" id="csvFile" accept=".csv,text/csv"></label>
+    <span id="importStatus" class="status" role="status"></span>
+    <span class="spacer"></span>
+    <a href="api/inventory.csv" class="note">Download everything as CSV</a>
+  </div>
+</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const CAT = { loco: "Locomotive", set: "Train set", car: "Car", track: "Track", structure: "Structure", electronics: "Electronics", other: "Other" };
+  const CTL = { dcc: "DCC", "dcc-sound": "DCC + SOUND", analog: "ANALOG" };
+  const FEATS = {
+    loco: ["Decoder installed", "Sound", "Lights upgraded", "Metal wheels", "Knuckle couplers", "Weathered"],
+    set: ["Decoder installed", "Sound", "Interior lights added", "Metal wheels", "Knuckle couplers"],
+    car: ["Interior lights added", "Tail / marker lights", "Metal wheels", "Knuckle couplers", "Weighted", "Weathered"],
+    track: ["Power feeder", "Insulated joiners"],
+    structure: ["Lights added", "Built / assembled", "Weathered"],
+    electronics: [], other: [],
+  };
+  const money = c => "$" + (c / 100).toLocaleString(undefined, { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 });
+  let items = [], view = "all", editing = null;
+  try { if (localStorage.getItem("inv-view") === "buy") view = "buy"; } catch {}
+
+  async function api(method, path, body, type) {
+    const r = await fetch(path, { method, headers: body ? { "Content-Type": type || "application/json" } : {}, body: body ? (type ? body : JSON.stringify(body)) : undefined });
+    if (!r.ok) {
+      let msg = "Couldn't reach Train Control. Check that it's running.";
+      try { msg = (await r.json()).error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return r.status === 204 ? null : r.json();
+  }
+
+  // ---- summary ----
+  function tiles() {
+    const owned = items.filter(i => i.status === "owned");
+    const year = String(new Date().getFullYear());
+    const priced = items.filter(i => i.status !== "wanted" && i.costCents > 0);
+    $("tItems").textContent = owned.reduce((n, i) => n + i.quantity, 0).toLocaleString();
+    $("tSpent").textContent = money(priced.reduce((n, i) => n + i.costCents, 0));
+    const unpriced = owned.filter(i => !i.costCents).length;
+    $("tSpentNote").textContent = unpriced ? `spent, with ${unpriced} line${unpriced > 1 ? "s" : ""} not priced yet` : "spent on everything owned";
+    $("tYear").textContent = money(priced.filter(i => (i.acquired || "").startsWith(year)).reduce((n, i) => n + i.costCents, 0));
+    $("tYearLabel").textContent = "spent in " + year;
+    $("tWanted").textContent = items.filter(i => i.status === "wanted").length;
+  }
+
+  // ---- table ----
+  function filtered() {
+    const q = $("q").value.trim().toLowerCase(), cat = $("fCat").value, st = $("fStatus").value;
+    return items.filter(i => (!cat || i.category === cat) && (!st || i.status === st) &&
+      (!q || [i.make, i.part, i.description, i.source, i.notes, ...(i.features || [])].join(" ").toLowerCase().includes(q)));
+  }
+  const itemCell = i => `<td><span class="mono">${esc(i.make)} ${esc(i.part)}</span>${i.description ? `<div class="desc">${esc(i.description)}</div>` : ""}${i.status !== "owned" ? ` <span class="st ${i.status}">${i.status === "wanted" ? "Wish list" : "Sold"}</span>` : ""}</td>`;
+  const chips = i => `<div class="chips">${(i.features || []).map(f => `<span class="chip">${esc(f)}</span>`).join("")}</div>`;
+  function render() {
+    tiles();
+    const rows = filtered();
+    $("empty").hidden = items.length > 0;
+    $("tbl").parentElement.hidden = items.length === 0;
+    $("tabAll").setAttribute("aria-selected", view === "all");
+    $("tabBuy").setAttribute("aria-selected", view === "buy");
+    if (view === "all") {
+      let html = `<thead><tr><th>Item</th><th>Category</th><th class="num">Qty</th><th>Control</th><th>Features</th><th>Acquired</th><th class="num">Paid</th></tr></thead><tbody>`;
+      html += rows.map(i => `<tr tabindex="0" data-id="${esc(i.id)}">${itemCell(i)}<td>${CAT[i.category] || ""}</td><td class="num">${i.quantity}</td>
+        <td>${i.control ? `<span class="ctl ${i.control}">${CTL[i.control]}</span>` : ""}</td><td>${chips(i)}</td>
+        <td class="mono">${i.acquired ? esc(i.acquired) : `<span class="miss">—</span>`}</td><td class="num">${i.costCents ? money(i.costCents) : `<span class="miss">—</span>`}</td></tr>`).join("");
+      if (!rows.length) html += `<tr><td colspan="7" class="miss">Nothing matches that search.</td></tr>`;
+      $("tbl").innerHTML = html + "</tbody>";
+    } else {
+      const groups = {};
+      rows.forEach(i => { const y = (i.acquired || "").slice(0, 4) || "Date not recorded"; (groups[y] ||= []).push(i); });
+      const keys = Object.keys(groups).sort((a, b) => (a === "Date not recorded") - (b === "Date not recorded") || b.localeCompare(a));
+      let html = `<thead><tr><th>Date</th><th>Item</th><th>From</th><th class="num">Qty</th><th class="num">Paid</th></tr></thead><tbody>`;
+      keys.forEach(y => {
+        const g = groups[y].sort((a, b) => (b.acquired || "").localeCompare(a.acquired || ""));
+        const sum = g.reduce((n, i) => n + i.costCents, 0);
+        html += `<tr class="group"><td colspan="5">${esc(y)}</td></tr>`;
+        html += g.map(i => `<tr tabindex="0" data-id="${esc(i.id)}"><td class="mono">${esc(i.acquired) || `<span class="miss">—</span>`}</td>${itemCell(i)}<td>${esc(i.source) || `<span class="miss">—</span>`}</td><td class="num">${i.quantity}</td><td class="num">${i.costCents ? money(i.costCents) : `<span class="miss">—</span>`}</td></tr>`).join("");
+        html += `<tr class="subtotal"><td colspan="4">${y === "Date not recorded" ? `${g.length} line${g.length > 1 ? "s" : ""} without a date. Open one to add when and where it came from.` : `Total for ${esc(y)}`}</td><td class="num">${money(sum)}</td></tr>`;
+      });
+      if (!rows.length) html += `<tr><td colspan="5" class="miss">Nothing matches that search.</td></tr>`;
+      $("tbl").innerHTML = html + "</tbody>";
+    }
+  }
+  function setView(v) { view = v; try { localStorage.setItem("inv-view", v); } catch {} render(); }
+  $("tabAll").addEventListener("click", () => setView("all"));
+  $("tabBuy").addEventListener("click", () => setView("buy"));
+  ["q", "fCat", "fStatus"].forEach(id => $(id).addEventListener("input", render));
+  function openRow(e) {
+    const tr = e.target.closest("tr[data-id]"); if (!tr) return;
+    const it = items.find(i => i.id === tr.dataset.id); if (it) { openForm(it); $("panel").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  }
+  $("tbl").addEventListener("click", openRow);
+  $("tbl").addEventListener("keydown", e => { if (e.key === "Enter") openRow(e); });
+
+  // ---- form ----
+  function featBoxes(cat, have) {
+    const list = FEATS[cat] || [];
+    $("featBoxes").innerHTML = list.map((f, n) => `<label for="ft${n}"><input type="checkbox" id="ft${n}" value="${esc(f)}"${have.includes(f) ? " checked" : ""}> ${esc(f)}</label>`).join("");
+    $("iFeatX").value = have.filter(f => !list.includes(f)).join(", ");
+    $("ctlWrap").hidden = !(cat === "loco" || cat === "set");
+  }
+  function currentFeats() {
+    const boxes = [...$("featBoxes").querySelectorAll("input:checked")].map(b => b.value);
+    return boxes.concat($("iFeatX").value.split(",").map(s => s.trim()).filter(Boolean));
+  }
+  function openForm(it) {
+    editing = it ? it.id : null;
+    $("panelTitle").textContent = it ? "Edit " + ([it.make, it.part].filter(Boolean).join(" ") || "item") : "Add an item";
+    $("iCat").value = it?.category || $("fCat").value || "car";
+    $("iMake").value = it?.make || ""; $("iPart").value = it?.part || ""; $("iDesc").value = it?.description || "";
+    $("iQty").value = it?.quantity || 1; $("iStatus").value = it?.status || "owned"; $("iCond").value = it?.condition || "";
+    $("iCtl").value = it?.control || ""; $("iDate").value = it?.acquired || "";
+    $("iCost").value = it?.costCents ? (it.costCents / 100).toFixed(2) : ""; $("iSrc").value = it?.source || ""; $("iNotes").value = it?.notes || "";
+    featBoxes($("iCat").value, it?.features || []);
+    $("delBtn").hidden = !it; $("delBtn").textContent = "Delete"; $("delBtn").dataset.armed = "";
+    $("formStatus").textContent = ""; $("panel").hidden = false; $("iMake").focus();
+  }
+  $("iCat").addEventListener("change", () => featBoxes($("iCat").value, currentFeats()));
+  $("addBtn").addEventListener("click", () => { openForm(null); $("panel").scrollIntoView({ behavior: "smooth", block: "start" }); });
+  $("cancelBtn").addEventListener("click", () => { $("panel").hidden = true; });
+  $("panel").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cost = $("iCost").value.replace(/[$,\s]/g, "");
+    if (cost && !/^\d+(\.\d{1,2})?$/.test(cost)) { $("formStatus").textContent = "Write the price as a number, like 24.99."; return; }
+    const cat = $("iCat").value;
+    const data = {
+      category: cat, make: $("iMake").value, part: $("iPart").value, description: $("iDesc").value,
+      quantity: parseInt($("iQty").value, 10) || 0, status: $("iStatus").value, condition: $("iCond").value,
+      control: cat === "loco" || cat === "set" ? $("iCtl").value : "", acquired: $("iDate").value.trim(),
+      costCents: cost ? Math.round(parseFloat(cost) * 100) : 0, source: $("iSrc").value, features: currentFeats(), notes: $("iNotes").value,
+    };
+    $("saveBtn").disabled = true; $("formStatus").textContent = "Saving…";
+    try {
+      if (editing) await api("PUT", "api/inventory/" + encodeURIComponent(editing), data); else await api("POST", "api/inventory", data);
+      $("panel").hidden = true;
+    } catch (err) { $("formStatus").textContent = err.message; }
+    finally { $("saveBtn").disabled = false; }
+  });
+  $("delBtn").addEventListener("click", async () => {
+    const b = $("delBtn");
+    if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Click again to delete"; return; }
+    try { await api("DELETE", "api/inventory/" + encodeURIComponent(editing)); $("panel").hidden = true; }
+    catch (err) { $("formStatus").textContent = err.message; }
+  });
+  $("csvFile").addEventListener("change", async () => {
+    const f = $("csvFile").files[0]; if (!f) return;
+    $("importStatus").textContent = "Importing…";
+    try {
+      const r = await api("POST", "api/inventory/import", await f.text(), "text/csv");
+      $("importStatus").textContent = `Added ${r.added} line${r.added === 1 ? "" : "s"}.`;
+    } catch (err) { $("importStatus").textContent = err.message; }
+    $("csvFile").value = "";
+  });
+
+  // ---- data ----
+  async function load() {
+    try { items = await api("GET", "api/inventory"); $("conn").hidden = true; }
+    catch (e) { $("conn").hidden = false; $("conn").textContent = e.message; }
+    render();
+  }
+  const events = new EventSource("api/events");
+  events.addEventListener("inventory", load);
+  events.onerror = () => { $("conn").hidden = false; $("conn").textContent = "Lost the connection to Train Control. Retrying…"; };
+  render();
+})();
+</script>
+</body>
+</html>

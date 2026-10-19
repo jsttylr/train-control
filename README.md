@@ -2,7 +2,10 @@
 
 > This software was **developed with AI** (Claude, by Anthropic) and has only been tested on one layout. **Use it at your own risk.** It comes with no warranty of any kind. Licensed under GPL-3.0.
 
-A loco roster for a model railroad, served as a web page on your network. Every locomotive gets a cartoon drawing in its own colors, with its DCC address on a plate, or an **ANALOG** plate for locos without a decoder.
+A loco roster and inventory for a model railroad, served as a web page on your network.
+
+## Roster
+ Every locomotive gets a cartoon drawing in its own colors, with its DCC address on a plate, or an **ANALOG** plate for locos without a decoder.
 
 It also catches two common DCC mix-ups:
 
@@ -12,6 +15,18 @@ It also catches two common DCC mix-ups:
 Any browser on the network sees the same roster, and changes show up on every open page right away.
 
 ![The roster](docs/roster.png)
+
+## Inventory
+
+The **Inventory** page keeps everything in the collection: track sets, locos, train sets, cars, structures and electronics. For each line it records the maker and part number, quantity, whether it's owned, on the wish list or sold, new or used, DCC, DCC with sound or analog, and features and upgrades such as interior lights added, metal wheels or knuckle couplers.
+
+It also records when, where and for how much each thing was bought. The **Purchases** tab lists them by year with a total for each year, and the tiles at the top show the total spent and the spend this year.
+
+To bring in a spreadsheet, save it as CSV and use **Import a CSV**. The first row needs column names. Only `category` is required (`loco`, `set`, `car`, `track`, `structure`, `electronics` or `other`), and the others can be `make, part, description, quantity, status, condition, control, acquired, cost, source, features, notes`. Separate features with semicolons. **Download everything as CSV** gives the same format back, which also works as a backup.
+
+![The inventory](docs/inventory.png)
+
+## Coming later
 
 Track control (running trains and throwing turnouts through JMRI and the Digitrax Zephyr) is planned for a later version.
 
@@ -39,10 +54,10 @@ Download the build for your computer from the latest release (or the newest buil
 | Address and port | `TRAIN_CONTROL_LISTEN` | `0.0.0.0:8070` |
 | Don't open a browser | `TRAIN_CONTROL_NO_BROWSER` | off (on in Docker) |
 
-There's no password, so anyone on your network can edit the roster. Don't expose port 8070 to the internet.
+There's no password, so anyone on your network can edit the roster and inventory. Don't expose port 8070 to the internet.
 
-## The roster file
+## Your data
 
-The roster is one readable file, `locos.json`, in the data folder. Back it up by copying it.
+Everything is kept in two readable files in the data folder: `locos.json` (the roster) and `inventory.json`. Back them up by copying them.
 
-The same data is available at `/api/locos` (GET to list, POST to add, PUT `/api/locos/<id>` to change, DELETE to remove), for scripts or a future track-control add-on.
+The same data is available at `/api/locos` and `/api/inventory` (GET to list, POST to add, PUT `/api/.../<id>` to change, DELETE to remove), for scripts or a future track-control add-on.
