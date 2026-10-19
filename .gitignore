@@ -1,0 +1,4 @@
+/dist/
+/train-control
+*.exe
+/data/

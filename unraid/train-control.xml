@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>train-control</Name>
+  <Repository>ghcr.io/jsttylr/train-control:latest</Repository>
+  <Registry>https://github.com/jsttylr/train-control/pkgs/container/train-control</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/jsttylr/train-control/issues</Support>
+  <Project>https://github.com/jsttylr/train-control</Project>
+  <Overview>Loco roster for a model railroad: a cartoon of every locomotive with its DCC address, or a note that it runs on analog DC. Flags two locos sharing an address and locos still on factory address 3. Track control will be added later.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8070]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/jsttylr/train-control/main/unraid/train-control.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jsttylr/train-control/main/unraid/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/train-control" Mode="rw" Description="The loco roster." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/train-control</Config>
+  <Config Name="Web page port" Target="8070" Default="8070" Mode="tcp" Description="Port for the roster page." Type="Port" Display="always" Required="true" Mask="false">8070</Config>
+</Container>

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<title>Loco Roster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: roundhouse grid of loco cards, each a cartoon on a strip of track with its address plate */
+:root {
+  --bg: #f3f5f2;
+  --sheet: #ffffff;
+  --ink: #1d2622;
+  --muted: #5d6b64;
+  --line: #d5ddd8;
+  --pine: #1f6b4a;     /* DCC */
+  --cran: #b3263a;     /* analog */
+  --gold: #b88a1b;
+  --stage: #e9eee9;
+  --rail: #8f9792;
+  --outline: #1d2622;  /* cartoon outline */
+  --f-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121815; --sheet: #1a221e; --ink: #e5ece8; --muted: #9aa8a1; --line: #2c3833;
+  --pine: #4fbf8a; --cran: #f0647a; --gold: #e0b44a; --stage: #212b26; --rail: #6c7570; --outline: #0b0f0d;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121815; --sheet: #1a221e; --ink: #e5ece8; --muted: #9aa8a1; --line: #2c3833;
+  --pine: #4fbf8a; --cran: #f0647a; --gold: #e0b44a; --stage: #212b26; --rail: #6c7570; --outline: #0b0f0d;
+  color-scheme: dark }
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 24px; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: clamp(2.2rem, 6vw, 3.4rem); line-height: 1; margin: 0; }
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 14px 24px; }
+.top p { margin: 6px 0 0; color: var(--muted); }
+.counts { display: flex; gap: 18px; font-family: var(--f-mono); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.counts b { font-size: 1.4rem; display: block; font-family: var(--f-display); font-weight: 800; }
+.c-dcc b { color: var(--pine); } .c-dc b { color: var(--cran); }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); padding: 8px 14px; }
+button.primary { background: var(--pine); border-color: var(--pine); color: var(--sheet); font-weight: 600; }
+button.danger { color: var(--cran); border-color: var(--cran); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.warn { background: var(--sheet); border: 1px solid var(--cran); border-radius: 10px; padding: 12px 16px; color: var(--cran); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.card { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.card.clash { border-color: var(--cran); }
+.stage { background: var(--stage); padding: 14px 10px 0; }
+.stage svg { display: block; width: 100%; height: auto; }
+.info { padding: 12px 14px 14px; display: grid; gap: 6px; align-content: start; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.name { font-weight: 600; font-size: 1.05rem; min-width: 0; overflow-wrap: anywhere; }
+.road { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+.notes { font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
+.plate { font-family: var(--f-mono); font-weight: 600; font-size: .8rem; letter-spacing: .06em; border-radius: 6px; padding: 3px 8px; white-space: nowrap; border: 2px solid currentColor; font-variant-numeric: tabular-nums; }
+.plate.dcc { color: var(--pine); } .plate.dc { color: var(--cran); }
+.flag { font-size: .8rem; color: var(--cran); }
+.edit { justify-self: start; padding: 4px 10px; font-size: .85rem; }
+.empty { background: var(--sheet); border: 1px dashed var(--line); border-radius: 12px; padding: 28px 20px; display: grid; gap: 12px; justify-items: start; }
+.empty p { margin: 0; max-width: 60ch; }
+.panel { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 24px; }
+.panel h2 { grid-column: 1 / -1; margin: 0; font-family: var(--f-display); font-size: 1.6rem; }
+.fields { display: grid; gap: 12px; }
+label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+input[type=color] { padding: 2px; height: 38px; width: 100%; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.seg { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: .95rem; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+.preview { background: var(--stage); border-radius: 10px; padding: 16px 12px 4px; align-self: start; display: grid; gap: 8px; }
+.preview svg { width: 100%; height: auto; display: block; }
+.hint { font-size: .8rem; color: var(--muted); margin: 0; }
+.actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.actions .spacer { flex: 1; }
+.status { font-size: .85rem; color: var(--muted); }
+.wheel { transform-box: fill-box; transform-origin: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .card:hover .wheel { animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+}
+@media (max-width: 640px) { .panel { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Loco Roster</h1>
+      <p>Every locomotive on the layout, with its DCC address or a note that it runs on analog DC.</p>
+    </div>
+    <div class="counts" aria-live="polite">
+      <div><b id="nAll">0</b>locos</div>
+      <div class="c-dcc"><b id="nDcc">0</b>DCC</div>
+      <div class="c-dc"><b id="nDc">0</b>analog</div>
+    </div>
+  </div>
+  <div id="warn" class="warn" hidden></div>
+  <div class="row" style="justify-content:flex-start;gap:10px">
+    <button id="addBtn" class="primary" hidden>Add a loco</button>
+    <span id="conn" class="status">Loading the roster…</span>
+  </div>
+  <form id="panel" class="panel" hidden>
+    <h2 id="panelTitle">Add a loco</h2>
+    <div class="fields">
+      <label for="fName">Model<input id="fName" maxlength="60" placeholder="Kato SD40-2" required></label>
+      <label for="fRoad">Railroad and number<input id="fRoad" maxlength="60" placeholder="BNSF 7872"></label>
+      <label for="fStyle">Cartoon style<select id="fStyle">
+        <option value="hood">Diesel, road switcher (GP, SD, Dash 9)</option>
+        <option value="cab">Diesel, cab unit (F7, E8, PA)</option>
+        <option value="steam">Steam</option>
+        <option value="electric">Electric</option>
+        <option value="bullet">High-speed / bullet train</option>
+      </select></label>
+      <div class="pair">
+        <label for="fBody">Body color<input id="fBody" type="color" value="#e86a1c"></label>
+        <label for="fTrim">Stripe color<input id="fTrim" type="color" value="#2b2b2b"></label>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Control">
+        <label for="fModeDcc"><input type="radio" name="mode" id="fModeDcc" value="dcc" checked> DCC</label>
+        <label for="fModeDc"><input type="radio" name="mode" id="fModeDc" value="dc"> Analog DC</label>
+      </div>
+      <label for="fAddr" id="addrWrap">DCC address<input id="fAddr" type="number" min="1" max="9999" inputmode="numeric" placeholder="e.g. 7872"></label>
+      <p class="hint" id="addrHint">1–127 is a short address (CV1). 128–9999 is a long address (CV17/18). New decoders ship set to 3.</p>
+      <label for="fNotes">Notes<textarea id="fNotes" rows="2" maxlength="200" placeholder="Decoder, sound, quirks"></textarea></label>
+    </div>
+    <div class="preview" aria-label="Preview">
+      <div id="pv"></div>
+      <p class="hint">Preview</p>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary" id="saveBtn">Save</button>
+      <button type="button" id="cancelBtn">Cancel</button>
+      <span class="spacer"></span>
+      <button type="button" id="delBtn" class="danger" hidden>Delete</button>
+      <span id="formStatus" class="status"></span>
+    </div>
+  </form>
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" hidden>
+    <div id="emptyArt" style="width:min(320px,100%)"></div>
+    <p><b>No locos yet.</b> Add each locomotive with its DCC address, or mark it analog. The roster flags any two locos that share an address.</p>
+  </div>
+</div>
+<script>
+(() => {
+  const HEX = /^#[0-9a-f]{6}$/i;
+  const STYLES = ["hood", "cab", "steam", "electric", "bullet"];
+  const DEF = { hood: ["#e86a1c", "#2b2b2b"], cab: ["#c8102e", "#f2c200"], steam: ["#2b2b2b", "#c8102e"], electric: ["#1f5fa8", "#e8e8e8"], bullet: ["#f4f4f4", "#1f5fa8"] };
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function shade(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    const ch = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f))));
+    return "#" + ch.map(v => v.toString(16).padStart(2, "0")).join("");
+  }
+  const wheel = (cx, cy, r) => `<g class="wheel"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#3a3f3c" stroke="var(--outline)" stroke-width="3"/><circle cx="${cx}" cy="${cy}" r="${r * .35}" fill="#9aa19d"/><line x1="${cx - r * .7}" y1="${cy}" x2="${cx + r * .7}" y2="${cy}" stroke="#9aa19d" stroke-width="2"/></g>`;
+  const truck = (x) => `<rect x="${x - 4}" y="80" width="44" height="10" rx="4" fill="#3a3f3c" stroke="var(--outline)" stroke-width="3"/>${wheel(x + 6, 90, 8)}${wheel(x + 30, 90, 8)}`;
+  const O = `stroke="var(--outline)" stroke-width="3" stroke-linejoin="round"`;
+
+  function art(style, body, trim) {
+    if (!STYLES.includes(style)) style = "hood";
+    if (!HEX.test(body)) body = DEF[style][0];
+    if (!HEX.test(trim)) trim = DEF[style][1];
+    const dark = shade(body, -.35), light = shade(body, .45), glass = "#bfe3f2";
+    let g = "";
+    if (style === "hood") {
+      g = `<rect x="14" y="74" width="192" height="10" rx="3" fill="${dark}" ${O}/>
+        ${truck(30)}${truck(150)}
+        <rect x="22" y="44" width="122" height="32" rx="6" fill="${body}" ${O}/>
+        <rect x="22" y="60" width="122" height="7" fill="${trim}"/>
+        <rect x="22" y="44" width="122" height="32" rx="6" fill="none" ${O}/>
+        ${[34, 54, 74, 94, 114].map(x => `<rect x="${x}" y="49" width="12" height="7" rx="1.5" fill="${dark}"/>`).join("")}
+        <rect x="144" y="28" width="38" height="48" rx="5" fill="${body}" ${O}/>
+        <rect x="150" y="34" width="12" height="13" rx="2" fill="${glass}" ${O}/><rect x="166" y="34" width="11" height="13" rx="2" fill="${glass}" ${O}/>
+        <rect x="140" y="24" width="46" height="7" rx="3" fill="${dark}" ${O}/>
+        <rect x="182" y="52" width="20" height="24" rx="5" fill="${body}" ${O}/>
+        <rect x="182" y="60" width="20" height="7" fill="${trim}"/><rect x="182" y="52" width="20" height="24" rx="5" fill="none" ${O}/>
+        <circle cx="198" cy="56" r="3.5" fill="#fff6b0" ${O}/>
+        <rect x="28" y="47" width="40" height="3" rx="1.5" fill="${light}" opacity=".7"/>`;
+    } else if (style === "cab") {
+      g = `<rect x="14" y="74" width="188" height="10" rx="3" fill="${dark}" ${O}/>
+        ${truck(30)}${truck(146)}
+        <path d="M16 36 H150 Q182 36 196 58 Q204 70 204 78 H16 Z" fill="${body}" ${O}/>
+        <path d="M16 60 H198 L201 68 H16 Z" fill="${trim}"/>
+        <path d="M16 36 H150 Q182 36 196 58 Q204 70 204 78 H16 Z" fill="none" ${O}/>
+        <path d="M156 41 Q176 42 186 54 L160 54 Z" fill="${glass}" ${O}/>
+        ${[40, 70, 100].map(x => `<circle cx="${x}" cy="49" r="5" fill="${glass}" ${O}/>`).join("")}
+        <circle cx="194" cy="50" r="4" fill="#fff6b0" ${O}/>
+        <rect x="24" y="39" width="110" height="3" rx="1.5" fill="${light}" opacity=".7"/>`;
+    } else if (style === "steam") {
+      g = `<rect x="10" y="74" width="196" height="8" rx="3" fill="${dark}" ${O}/>
+        <rect x="70" y="40" width="112" height="36" rx="16" fill="${body}" ${O}/>
+        <rect x="70" y="62" width="112" height="5" fill="${trim}"/>
+        <rect x="70" y="40" width="112" height="36" rx="16" fill="none" ${O}/>
+        <path d="M156 40 L152 18 H174 L168 40 Z" fill="${dark}" ${O}/>
+        <ellipse cx="124" cy="40" rx="10" ry="8" fill="${body}" ${O}/>
+        <rect x="18" y="20" width="56" height="58" rx="4" fill="${body}" ${O}/>
+        <rect x="12" y="14" width="68" height="9" rx="4" fill="${dark}" ${O}/>
+        <rect x="30" y="30" width="30" height="20" rx="3" fill="${glass}" ${O}/>
+        <rect x="18" y="60" width="56" height="5" fill="${trim}"/>
+        <rect x="18" y="20" width="56" height="58" rx="4" fill="none" ${O}/>
+        <circle cx="184" cy="50" r="5" fill="#fff6b0" ${O}/>
+        <path d="M184 72 L206 90 H184 Z" fill="${trim}" ${O}/>
+        ${wheel(92, 84, 13)}${wheel(122, 84, 13)}${wheel(152, 84, 13)}${wheel(40, 88, 9)}${wheel(176, 88, 8)}
+        <line x1="92" y1="84" x2="152" y2="84" stroke="#c9cfcb" stroke-width="4" stroke-linecap="round"/>
+        <rect x="80" y="44" width="80" height="3" rx="1.5" fill="${light}" opacity=".7"/>`;
+    } else if (style === "electric") {
+      g = `<path d="M70 30 L90 16 L110 30 M80 23 L100 23" fill="none" stroke="var(--outline)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="84" y="28" width="32" height="5" rx="2" fill="#3a3f3c"/>
+        <rect x="14" y="74" width="192" height="10" rx="3" fill="${dark}" ${O}/>
+        ${truck(28)}${truck(152)}
+        <rect x="16" y="32" width="188" height="44" rx="10" fill="${body}" ${O}/>
+        <rect x="16" y="58" width="188" height="8" fill="${trim}"/>
+        <rect x="16" y="32" width="188" height="44" rx="10" fill="none" ${O}/>
+        <rect x="24" y="38" width="20" height="14" rx="3" fill="${glass}" ${O}/><rect x="176" y="38" width="20" height="14" rx="3" fill="${glass}" ${O}/>
+        ${[64, 92, 120, 148].map(x => `<rect x="${x}" y="40" width="14" height="10" rx="2" fill="${dark}"/>`).join("")}
+        <circle cx="198" cy="68" r="3" fill="#fff6b0" ${O}/>
+        <rect x="26" y="35" width="140" height="3" rx="1.5" fill="${light}" opacity=".7"/>`;
+    } else {
+      g = `<path d="M12 40 H128 Q170 40 196 64 Q208 74 208 82 H12 Z" fill="${body}" ${O}/>
+        <path d="M12 64 H196 Q204 70 206 74 H12 Z" fill="${trim}"/>
+        <path d="M12 40 H128 Q170 40 196 64 Q208 74 208 82 H12 Z" fill="none" ${O}/>
+        <path d="M150 46 Q172 50 184 60 L156 58 Z" fill="${glass}" ${O}/>
+        <rect x="20" y="48" width="118" height="9" rx="4" fill="${glass}" ${O}/>
+        <rect x="12" y="80" width="196" height="6" rx="2" fill="${dark}" ${O}/>
+        ${wheel(40, 90, 6)}${wheel(60, 90, 6)}${wheel(160, 90, 6)}${wheel(180, 90, 6)}
+        <circle cx="200" cy="74" r="2.5" fill="#fff6b0" ${O}/>
+        <rect x="20" y="43" width="100" height="3" rx="1.5" fill="${light}" opacity=".8"/>`;
+    }
+    return `<svg viewBox="0 0 220 104" aria-hidden="true"><ellipse cx="110" cy="99" rx="100" ry="4" fill="var(--outline)" opacity=".12"/><line x1="0" y1="98" x2="220" y2="98" stroke="var(--rail)" stroke-width="3"/>${g}</svg>`;
+  }
+
+  // ---- state ----
+  let locos = [];
+  let col = null, canWrite = false, editing = null;
+
+  function clean(d) {
+    const style = STYLES.includes(d.style) ? d.style : "hood";
+    const addr = Number.isInteger(d.address) && d.address >= 1 && d.address <= 9999 ? d.address : null;
+    return {
+      name: typeof d.name === "string" ? d.name.slice(0, 60) : "Unnamed loco",
+      road: typeof d.road === "string" ? d.road.slice(0, 60) : "",
+      notes: typeof d.notes === "string" ? d.notes.slice(0, 200) : "",
+      style, body: HEX.test(d.body) ? d.body : DEF[style][0], trim: HEX.test(d.trim) ? d.trim : DEF[style][1],
+      mode: d.mode === "dc" ? "dc" : "dcc", address: addr,
+    };
+  }
+
+  function render() {
+    const sorted = locos.slice().sort((a, b) => (a.mode === "dc") - (b.mode === "dc") || (a.address ?? 1e9) - (b.address ?? 1e9) || a.name.localeCompare(b.name));
+    const byAddr = {};
+    sorted.forEach(l => { if (l.mode === "dcc" && l.address) (byAddr[l.address] ||= []).push(l); });
+    const clashes = Object.entries(byAddr).filter(([, v]) => v.length > 1);
+    $("nAll").textContent = locos.length;
+    $("nDcc").textContent = locos.filter(l => l.mode === "dcc").length;
+    $("nDc").textContent = locos.filter(l => l.mode === "dc").length;
+    $("warn").hidden = !clashes.length;
+    $("warn").textContent = clashes.length ? "Address clash: " + clashes.map(([a, v]) => `${a} is used by ${v.map(l => l.name).join(" and ")}`).join("; ") + ". Both would move together on the same throttle." : "";
+    $("empty").hidden = locos.length > 0 || !col;
+    $("grid").innerHTML = sorted.map(l => {
+      const clash = l.mode === "dcc" && l.address && byAddr[l.address].length > 1;
+      const plate = l.mode === "dc" ? `<span class="plate dc">ANALOG</span>` : l.address ? `<span class="plate dcc">DCC ${l.address}</span>` : `<span class="plate dcc">DCC ?</span>`;
+      const flag = l.mode === "dcc" && l.address === 3 ? `<span class="flag">Still on factory address 3</span>` : clash ? `<span class="flag">Shares address ${l.address}</span>` : "";
+      return `<article class="card${clash ? " clash" : ""}">
+        <div class="stage">${art(l.style, l.body, l.trim)}</div>
+        <div class="info">
+          <div class="row"><span class="name">${esc(l.name)}</span>${plate}</div>
+          ${l.road ? `<span class="road">${esc(l.road)}</span>` : ""}
+          ${flag}
+          ${l.notes ? `<span class="notes">${esc(l.notes)}</span>` : ""}
+          ${canWrite ? `<button class="edit" data-id="${esc(l.id)}">Edit</button>` : ""}
+        </div></article>`;
+    }).join("");
+  }
+
+  // ---- form ----
+  const mode = () => document.querySelector('input[name=mode]:checked').value;
+  function preview() {
+    $("pv").innerHTML = art($("fStyle").value, $("fBody").value, $("fTrim").value);
+    const dcc = mode() === "dcc";
+    $("addrWrap").hidden = !dcc; $("addrHint").hidden = !dcc;
+  }
+  function openForm(l) {
+    editing = l ? l.id : null;
+    $("panelTitle").textContent = l ? "Edit " + l.name : "Add a loco";
+    $("fName").value = l?.name || ""; $("fRoad").value = l?.road || ""; $("fNotes").value = l?.notes || "";
+    $("fStyle").value = l?.style || "hood";
+    $("fBody").value = l?.body || DEF.hood[0]; $("fTrim").value = l?.trim || DEF.hood[1];
+    $(l?.mode === "dc" ? "fModeDc" : "fModeDcc").checked = true;
+    $("fAddr").value = l?.address ?? "";
+    $("delBtn").hidden = !l; $("delBtn").textContent = "Delete"; $("delBtn").dataset.armed = "";
+    $("formStatus").textContent = "";
+    $("panel").hidden = false; preview(); $("fName").focus();
+  }
+  $("fStyle").addEventListener("change", () => { const [b, t] = DEF[$("fStyle").value]; $("fBody").value = b; $("fTrim").value = t; preview(); });
+  ["fBody", "fTrim"].forEach(id => $(id).addEventListener("input", preview));
+  document.querySelectorAll("input[name=mode]").forEach(r => r.addEventListener("change", preview));
+  $("addBtn").addEventListener("click", () => openForm(null));
+  $("cancelBtn").addEventListener("click", () => { $("panel").hidden = true; });
+  $("grid").addEventListener("click", e => {
+    const b = e.target.closest(".edit"); if (!b) return;
+    const l = locos.find(x => x.id === b.dataset.id); if (l) { openForm(l); $("panel").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  });
+  $("panel").addEventListener("submit", async e => {
+    e.preventDefault();
+    const m = mode();
+    const addr = parseInt($("fAddr").value, 10);
+    if (m === "dcc" && !(addr >= 1 && addr <= 9999)) { $("formStatus").textContent = "Enter a DCC address from 1 to 9999, or choose Analog DC."; return; }
+    const data = {
+      name: $("fName").value.trim().slice(0, 60) || "Unnamed loco", road: $("fRoad").value.trim().slice(0, 60),
+      notes: $("fNotes").value.trim().slice(0, 200), style: $("fStyle").value, body: $("fBody").value, trim: $("fTrim").value,
+      mode: m, address: m === "dcc" ? addr : 0,
+    };
+    $("saveBtn").disabled = true; $("formStatus").textContent = "Saving…";
+    try {
+      if (editing) await col.doc(editing).set(data); else await col.add(data);
+      $("panel").hidden = true;
+    } catch (err) {
+      $("formStatus").textContent = err.message;
+    } finally { $("saveBtn").disabled = false; }
+  });
+  $("delBtn").addEventListener("click", async () => {
+    const b = $("delBtn");
+    if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Tap again to delete"; return; }
+    try { await col.doc(editing).delete(); $("panel").hidden = true; }
+    catch (err) { $("formStatus").textContent = err.message; }
+  });
+
+  $("emptyArt").innerHTML = art("hood", DEF.hood[0], DEF.hood[1]);
+  render();
+
+  // ---- data ----
+  async function api(method, path, body) {
+    const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    if (!r.ok) {
+      let msg = "Couldn't reach Train Control. Check that it's running.";
+      try { msg = (await r.json()).error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return r.status === 204 ? null : r.json();
+  }
+  col = {
+    doc: id => ({
+      set: d => api("PUT", "api/locos/" + encodeURIComponent(id), d),
+      delete: () => api("DELETE", "api/locos/" + encodeURIComponent(id)),
+    }),
+    add: d => api("POST", "api/locos", d),
+  };
+  canWrite = true;
+  $("addBtn").hidden = false;
+  async function load() {
+    try {
+      const list = await api("GET", "api/locos");
+      locos = list.map(d => ({ id: d.id, ...clean(d) }));
+      $("conn").hidden = true;
+    } catch (e) {
+      $("conn").hidden = false; $("conn").textContent = e.message;
+    }
+    render();
+  }
+  // The server tells every open page when anyone changes the roster.
+  const events = new EventSource("api/events");
+  events.addEventListener("roster", load);
+  events.onerror = () => { $("conn").hidden = false; $("conn").textContent = "Lost the connection to Train Control. Retrying…"; };
+})();
+</script>
+
+</body>
+</html>
