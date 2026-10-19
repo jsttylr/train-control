@@ -10,11 +10,12 @@ import (
 
 func TestRosterAPI(t *testing.T) {
 	dir := t.TempDir()
-	s, err := OpenStore(dir)
+	s, err := OpenStore[Loco](dir, "locos.json", locoLess)
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(routes(s))
+	items, _ := OpenStore[Item](dir, "inventory.json", itemLess)
+	srv := httptest.NewServer(routes(stores{s, items}))
 	defer srv.Close()
 
 	post := func(body string) *http.Response {
@@ -37,7 +38,7 @@ func TestRosterAPI(t *testing.T) {
 	}
 
 	// Reopen from disk: the roster survives a restart, analog locos lose their address, colors are sanitized.
-	s2, err := OpenStore(dir)
+	s2, err := OpenStore[Loco](dir, "locos.json", locoLess)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,90 +7,47 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Loco is one locomotive on the roster.
-type Loco struct {
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Road    string    `json:"road"`
-	Notes   string    `json:"notes"`
-	Style   string    `json:"style"` // cartoon drawing: hood, cab, steam, electric, bullet
-	Body    string    `json:"body"`  // #rrggbb
-	Trim    string    `json:"trim"`  // #rrggbb
-	Mode    string    `json:"mode"`  // "dcc" or "dc"
-	Address int       `json:"address,omitempty"`
-	Updated time.Time `json:"updated"`
-}
-
-var (
-	hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
-	styles   = map[string]bool{"hood": true, "cab": true, "steam": true, "electric": true, "bullet": true}
-
-	errNotFound = errors.New("no loco with that id")
-)
+var errNotFound = errors.New("nothing with that id")
 
 // badInput is a problem with what the page sent, as opposed to a problem saving it.
 type badInput string
 
 func (e badInput) Error() string { return string(e) }
 
-// validate tidies a loco from the page and rejects anything that can't be saved.
-func (l *Loco) validate() error {
-	l.Name = clip(l.Name, 60)
-	l.Road = clip(l.Road, 60)
-	l.Notes = clip(l.Notes, 200)
-	if l.Name == "" {
-		return badInput("give the loco a name")
-	}
-	if !styles[l.Style] {
-		l.Style = "hood"
-	}
-	if !hexColor.MatchString(l.Body) {
-		l.Body = "#e86a1c"
-	}
-	if !hexColor.MatchString(l.Trim) {
-		l.Trim = "#2b2b2b"
-	}
-	switch l.Mode {
-	case "dc":
-		l.Address = 0
-	case "dcc":
-		if l.Address < 1 || l.Address > 9999 {
-			return badInput("DCC address must be from 1 to 9999")
-		}
-	default:
-		return badInput(`mode must be "dcc" or "dc"`)
-	}
-	return nil
+// record is anything kept in a Store: a roster loco or an inventory item.
+type record interface {
+	key() string
+	setKey(string)
+	stamp(time.Time)
+	validate() error
 }
 
-func clip(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if r := []rune(s); len(r) > n {
-		s = string(r[:n])
-	}
-	return s
+// Store keeps one list in memory and in one JSON file in the data folder.
+type Store[T any, P interface {
+	*T
+	record
+}] struct {
+	mu   sync.Mutex
+	path string
+	m    map[string]T
+	less func(a, b *T) bool
+	subs map[chan struct{}]bool
 }
 
-// Store keeps the roster in memory and in one JSON file in the data folder.
-type Store struct {
-	mu    sync.Mutex
-	path  string
-	locos map[string]Loco
-	subs  map[chan struct{}]bool
-}
-
-func OpenStore(dir string) (*Store, error) {
+func OpenStore[T any, P interface {
+	*T
+	record
+}](dir, file string, less func(a, b *T) bool) (*Store[T, P], error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	s := &Store{path: filepath.Join(dir, "locos.json"), locos: map[string]Loco{}, subs: map[chan struct{}]bool{}}
+	s := &Store[T, P]{path: filepath.Join(dir, file), m: map[string]T{}, less: less, subs: map[chan struct{}]bool{}}
 	b, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
@@ -98,86 +55,92 @@ func OpenStore(dir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	var list []Loco
+	var list []T
 	if err := json.Unmarshal(b, &list); err != nil {
 		return nil, err
 	}
-	for _, l := range list {
-		s.locos[l.ID] = l
+	for _, v := range list {
+		s.m[P(&v).key()] = v
 	}
 	return s, nil
 }
 
-// List returns DCC locos by address, then analog ones, then by name.
-func (s *Store) List() []Loco {
+func (s *Store[T, P]) List() []T {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.listLocked()
 }
 
-func (s *Store) listLocked() []Loco {
-	out := make([]Loco, 0, len(s.locos))
-	for _, l := range s.locos {
-		out = append(out, l)
+func (s *Store[T, P]) listLocked() []T {
+	out := make([]T, 0, len(s.m))
+	for _, v := range s.m {
+		out = append(out, v)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if (a.Mode == "dc") != (b.Mode == "dc") {
-			return b.Mode == "dc"
-		}
-		if a.Address != b.Address {
-			return a.Address < b.Address
-		}
-		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
-	})
+	sort.Slice(out, func(i, j int) bool { return s.less(&out[i], &out[j]) })
 	return out
 }
 
-// Put adds a loco (empty ID) or replaces an existing one.
-func (s *Store) Put(l Loco) (Loco, error) {
-	if err := l.validate(); err != nil {
-		return l, err
+// Put adds a record (empty id) or replaces an existing one.
+func (s *Store[T, P]) Put(v T) (T, error) {
+	out, err := s.PutAll([]T{v})
+	if err != nil {
+		return v, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if l.ID == "" {
-		l.ID = newID()
-	} else if _, ok := s.locos[l.ID]; !ok {
-		return l, errNotFound
-	}
-	l.Updated = time.Now().UTC()
-	old, had := s.locos[l.ID]
-	s.locos[l.ID] = l
-	if err := s.saveLocked(); err != nil {
-		if had {
-			s.locos[l.ID] = old
-		} else {
-			delete(s.locos, l.ID)
-		}
-		return l, err
-	}
-	s.notifyLocked()
-	return l, nil
+	return out[0], nil
 }
 
-func (s *Store) Delete(id string) error {
+// PutAll saves several records in one write; if any is invalid, none are saved.
+func (s *Store[T, P]) PutAll(vs []T) ([]T, error) {
+	now := time.Now().UTC()
+	for i := range vs {
+		if err := P(&vs[i]).validate(); err != nil {
+			return nil, err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	old, ok := s.locos[id]
+	for i := range vs {
+		p := P(&vs[i])
+		if p.key() == "" {
+			p.setKey(newID())
+		} else if _, ok := s.m[p.key()]; !ok {
+			return nil, errNotFound
+		}
+		p.stamp(now)
+	}
+	old := make(map[string]T, len(s.m))
+	for k, v := range s.m {
+		old[k] = v
+	}
+	for _, v := range vs {
+		s.m[P(&v).key()] = v
+	}
+	if err := s.saveLocked(); err != nil {
+		s.m = old
+		return nil, err
+	}
+	s.notifyLocked()
+	return vs, nil
+}
+
+func (s *Store[T, P]) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old, ok := s.m[id]
 	if !ok {
 		return errNotFound
 	}
-	delete(s.locos, id)
+	delete(s.m, id)
 	if err := s.saveLocked(); err != nil {
-		s.locos[id] = old
+		s.m[id] = old
 		return err
 	}
 	s.notifyLocked()
 	return nil
 }
 
-// saveLocked writes to a temp file and renames it, so a crash never leaves half a roster.
-func (s *Store) saveLocked() error {
+// saveLocked writes to a temp file and renames it, so a crash never leaves half a file.
+func (s *Store[T, P]) saveLocked() error {
 	b, err := json.MarshalIndent(s.listLocked(), "", "  ")
 	if err != nil {
 		return err
@@ -189,8 +152,8 @@ func (s *Store) saveLocked() error {
 	return os.Rename(tmp, s.path)
 }
 
-// Subscribe returns a channel that gets a signal whenever the roster changes.
-func (s *Store) Subscribe() (chan struct{}, func()) {
+// Subscribe returns a channel that gets a signal whenever the list changes.
+func (s *Store[T, P]) Subscribe() (chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	s.mu.Lock()
 	s.subs[ch] = true
@@ -202,7 +165,7 @@ func (s *Store) Subscribe() (chan struct{}, func()) {
 	}
 }
 
-func (s *Store) notifyLocked() {
+func (s *Store[T, P]) notifyLocked() {
 	for ch := range s.subs {
 		select {
 		case ch <- struct{}{}:
@@ -215,4 +178,12 @@ func newID() string {
 	b := make([]byte, 6)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > n {
+		s = string(r[:n])
+	}
+	return s
 }

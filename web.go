@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"time"
@@ -12,7 +13,12 @@ import (
 //go:embed web
 var webFiles embed.FS
 
-func routes(s *Store) http.Handler {
+type stores struct {
+	locos *Store[Loco, *Loco]
+	items *Store[Item, *Item]
+}
+
+func routes(s stores) http.Handler {
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(webFiles, "web")
 	mux.Handle("GET /", http.FileServerFS(static))
@@ -20,34 +26,30 @@ func routes(s *Store) http.Handler {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("GET /api/locos", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, s.List())
+	crud(mux, "/api/locos", s.locos)
+	crud(mux, "/api/inventory", s.items)
+
+	mux.HandleFunc("GET /api/inventory.csv", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="train-inventory-%s.csv"`, time.Now().Format("2006-01-02")))
+		writeCSV(w, s.items.List())
 	})
-	mux.HandleFunc("POST /api/locos", func(w http.ResponseWriter, r *http.Request) {
-		var l Loco
-		if !readJSON(w, r, &l) {
-			return
-		}
-		l.ID = ""
-		save(w, s, l, http.StatusCreated)
-	})
-	mux.HandleFunc("PUT /api/locos/{id}", func(w http.ResponseWriter, r *http.Request) {
-		var l Loco
-		if !readJSON(w, r, &l) {
-			return
-		}
-		l.ID = r.PathValue("id")
-		save(w, s, l, http.StatusOK)
-	})
-	mux.HandleFunc("DELETE /api/locos/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if err := s.Delete(r.PathValue("id")); err != nil {
+	// Import adds every row of a CSV as new items, all or nothing.
+	mux.HandleFunc("POST /api/inventory/import", func(w http.ResponseWriter, r *http.Request) {
+		items, err := readCSV(http.MaxBytesReader(w, r.Body, 2<<20))
+		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		saved, err := s.items.PutAll(items)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]int{"added": len(saved)})
 	})
 
-	// Every open page listens here and reloads the roster when anyone changes it.
+	// Every open page listens here and reloads when anyone changes something.
 	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
 		fl, ok := w.(http.Flusher)
 		if !ok {
@@ -56,18 +58,22 @@ func routes(s *Store) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		ch, done := s.Subscribe()
-		defer done()
+		locoCh, doneL := s.locos.Subscribe()
+		defer doneL()
+		itemCh, doneI := s.items.Subscribe()
+		defer doneI()
 		ping := time.NewTicker(25 * time.Second)
 		defer ping.Stop()
-		w.Write([]byte("event: roster\ndata: {}\n\n"))
+		w.Write([]byte("event: roster\ndata: {}\n\nevent: inventory\ndata: {}\n\n"))
 		fl.Flush()
 		for {
 			select {
 			case <-r.Context().Done():
 				return
-			case <-ch:
+			case <-locoCh:
 				w.Write([]byte("event: roster\ndata: {}\n\n"))
+			case <-itemCh:
+				w.Write([]byte("event: inventory\ndata: {}\n\n"))
 			case <-ping.C:
 				w.Write([]byte(": ping\n\n"))
 			}
@@ -77,8 +83,44 @@ func routes(s *Store) http.Handler {
 	return mux
 }
 
-func save(w http.ResponseWriter, s *Store, l Loco, status int) {
-	out, err := s.Put(l)
+// crud serves list, add, change and delete for one store.
+func crud[T any, P interface {
+	*T
+	record
+}](mux *http.ServeMux, base string, s *Store[T, P]) {
+	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, s.List())
+	})
+	mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) {
+		var v T
+		if !readJSON(w, r, &v) {
+			return
+		}
+		P(&v).setKey("")
+		save(w, s, v, http.StatusCreated)
+	})
+	mux.HandleFunc("PUT "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var v T
+		if !readJSON(w, r, &v) {
+			return
+		}
+		P(&v).setKey(r.PathValue("id"))
+		save(w, s, v, http.StatusOK)
+	})
+	mux.HandleFunc("DELETE "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.Delete(r.PathValue("id")); err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+func save[T any, P interface {
+	*T
+	record
+}](w http.ResponseWriter, s *Store[T, P], v T, status int) {
+	out, err := s.Put(v)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -88,7 +130,7 @@ func save(w http.ResponseWriter, s *Store, l Loco, status int) {
 
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(v); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "couldn't read that loco"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "couldn't read what the page sent"})
 		return false
 	}
 	return true
